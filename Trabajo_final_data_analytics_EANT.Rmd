@@ -1,0 +1,1113 @@
+---
+title: "¿Cuál es tu barrio ideal en la Ciudad Autónoma de Buenos Aires?"
+subtitle: Trabajo final grupal para el curso de Data Analytics con R de la Escuela Argentina de Nuevas Tecnologías (EANT)
+author: Rafael Carvajal, Alejandro Pocoroba y Yamila Sasal
+date: "2021-07-23"
+output: html_document
+code_folding: show 
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message = FALSE,eval = TRUE,comment = "",
+                      warning = FALSE, cache = FALSE)
+options(scipen = 999)
+```
+
+## ![](https://arc-anglerfish-arc2-prod-infobae.s3.amazonaws.com/public/EWRWZLV7FZEM7C24TIEPFBJCP4.jpg)
+
+# Introducción
+
+El objetivo del trabajo fue explorar ¿Cuál es tu barrio ideal en la
+Ciudad Autónoma de Buenos Aires (CABA, Argentina)? Al elegir en donde
+vivir, cada persona tiene distintas preferencias en cuanto a que es
+imprescindible y debe tener el lugar ideal. Definimos 6 criterios que
+consideramos podrían definir la búsqueda del barrio ideal, estos son:
+
+1.  disponibilidad de escuelas,
+2.  espacios deportivos,
+3.  precio de alquileres,
+4.  familiar (con niños y adolescentes),
+5.  centros de salud, y
+6.  transporte.
+
+Los datos los obtuvimos de Buenos Aires Data, posteriormente construimos
+una variable numérica que cuantificó dichos criterios para cada comuna
+(15 comunas a las que pertenecen los 48 barrios). Luego cada comuna
+adquirió una ponderación entre 1 y 5, donde 1 es menos preferido y 5 es
+la mayor preferencia. Finalmente eligiendo 4 criterios, el primero que
+se elige siempre tendrá más valor sobre los otros, obtenemos la comuna y
+los posibles barrios ideales para vivir.
+
+Si tenés planes de mudarte próximamente a CABA, este análisis te ayudará
+a descubrir cuál es tu barrio ideal para vivir.
+
+# Bases de datos
+
+Los datos utilizados fueron obtenidos del portal de datos abiertos de
+la Ciudad Autónoma de Buenos Aires: Buenos Aires Data
+<https://data.buenosaires.gob.ar/> . Las bases usadas para cada criterio
+fueron:
+
+-   Comunas CABA: Comunas y barrios de CABA
+-   Escuelas: Establecimientos educativos
+-   Familiar: Rango de edad de la población entre 5 y 19 años
+-   Población por edad y comuna 2021
+-   Espacios deportivos: Clubes de Barrio, Polideportivos y Espacios
+    verdes públicos
+-   Centros de salud: Hospitales, Centros de salud (CESAC), Estaciones
+    saludables y Centros de salud privados
+-   Transporte: Estaciones de bicicletas, Estaciones de ferrocarriles y
+    Estaciones de Metrobus
+
+A continuación presentamos los análisis que realizamos, junto con el
+código correspondiente. Antes de empezar importamos las librerías
+necesarias.
+
+```{r,results='hide'}
+# Librerías necesarias
+require(pacman) # instala e invoca varias librerias 
+p_load(readxl, tidyverse, dplyr, sf, viridis, janitor, ggmap,leaflet, ggplot2, reshape2, hrbrthemes, DT, kableExtra, forcats)
+options(dplyr.summarise.inform = FALSE) # Para que no tire error en group_by
+
+```
+
+# 1. Criterio escuelas
+
+Consideramos que el barrio ideal para mucha gente debe tener escuelas de
+distintos niveles: inicial, primarias y secundarias. ¿Cuáles son los
+barrios con más escuelas disponibles? Para responder a esta pregunta
+seleccionamos sólo jardines de infantes, escuelas primarias y
+secundarias, y filtramos los establecimientos para jóvenes y adultos.
+
+```{r,results='hide'}
+# Establecimientos educativos. Fuente: BA Data. 
+escuelas <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/ministerio-de-educacion/establecimientos-educativos/establecimientos_educativos_WGS84.geojson')
+
+# Ordenamos y seleccionamos los datos 
+escuelas <- escuelas %>% 
+  select(cui, cue, nombre_est, nivmod, nivelmodal, depfun, de, comuna, barrio, point_x, point_y,geometry)
+
+```
+
+```{r,results='hide'}
+# Vemos que hay muchos tipos de establecimientos educativos
+length(unique(escuelas$nivelmodal))
+tabla <- table(escuelas$nivelmodal)
+
+# Filtramos los establecimientos para jovenes y adultos, nos quedamos solo con los establecimientos comunes y especiales de tipo jardin de infantes, escuelas primarias y secundarias.
+jov_adultos_y_otros <- c("Nivel Primario de Jóvenes y Adultos", "Nivel Primario de Jóvenes y Adultos - Otros Servicios Educativos de la modalidad de Jóvenes y Adultos", "Nivel Primario y Secundario de Jóvenes y Adultos", "Nivel Secundario de Jóvenes y Adultos", "Nivel Secundario de Jóvenes y Adultos y Nivel Superior No Universitario Común", "Nivel Secundariode Jóvenes y Adutos y Otros Servicios Educativos de la modalidad de Jóvenes y Adultos - Nivel Superior No Universitario Común", "Nivel Superior No Universitario Común", "Nivel Superior No Universitario Común - Otros Servicios Educativos de la modalidad de Jóvenes y Adultos", "Nivel Superior No Universitario Común y Otros Servicios Educativos de la modalidad Común", "Otros Servicios Educativos de la modalidad Común", "Otros Servicios Educativos de la modalidad de Jóvenes y Adultos", "Otros Servicios Educativos de la modalidad Especial", "Otros Servicios Educativos de las modalidades Común y de Jóvenes y Adultos")
+
+escuelas_chicos <- escuelas %>% 
+   filter(!nivelmodal %in% jov_adultos_y_otros) %>% 
+   group_by(nivelmodal) %>% 
+   arrange(comuna,barrio)
+  
+```
+
+```{r,results='hide'}
+# Contamos el número de establecimientos educativos para niños y adolecentes por comuna.
+escuelas_chicos_comuna <- escuelas_chicos %>% 
+  group_by(comuna) %>% 
+  count(name="escuelas_chicos") %>% 
+  arrange(desc(escuelas_chicos))
+
+escuelas_chicos_comuna
+```
+
+Encontramos que la comuna 4 es la que más establecimientos educativos
+tiene con 150, y la comuna 2 es la que menos tiene con 63.
+
+Sin embargo, la disponibilidad de vacantes dependerá de la cantidad de
+niños y niñas que asistan a eso espacios educativos. Buscamos la
+poblacion de cada comuna agrupada por rango de edades y seleccionamos
+las edades entre 5 y 19 años.
+
+```{r,results='hide'}
+# Población en edad escolar por comuna. Fuente: BA Data.  
+# Población según comuna y edad, es una hoja de un excel por año que descargue a mi computadora.
+
+Poblacion_por_comuna_y_edad <- read.csv("poblacion_edad_comuna_2021.csv")
+
+Pobl_edad_escolar <- Poblacion_por_comuna_y_edad %>% 
+  tidyr::pivot_longer(cols = -"Grupo_de_edad",
+                       names_to = "comunas",
+                       values_to = "poblacion")
+
+
+# me quedo con los grupos de 5-9, 10-14 y 15-19 años
+chicos_edad_escolar <- Pobl_edad_escolar %>% 
+   filter(Grupo_de_edad %in% c("5-9","10-14","15-19")) %>% 
+   group_by(comunas) %>% 
+   summarise(chicos_comunas=sum(poblacion)) %>% 
+  arrange(desc(chicos_comunas))
+
+chicos_edad_escolar
+```
+
+Encontramos que la comuna con mas niños y adolescentes es la 8 con casi 65000 y la
+comuna con menos es la 2 con alrededor de 21800.
+
+Por lo tanto, para conocer la disponibilidad de escuelas relacionamos el
+número de escuelas por comuna con la población de niños y niñas, luego
+calculamos el número de estudiantes por unidad educativa. Es decir,
+niños y niñas entre escuelas.
+
+```{r, results='hide'}
+chicos_edad_escolar <-  chicos_edad_escolar %>% 
+   tidyr::separate(col = comunas,into=c("comunas_ch", "comunas_n"),sep = "_") %>% 
+   mutate(comunas_n=as.numeric(comunas_n)) %>% 
+  mutate(comunas_ch=NULL)
+
+escuelas_comuna <- chicos_edad_escolar %>% 
+   left_join(escuelas_chicos_comuna,by=c("comunas_n"="comuna")) %>%
+    mutate(alumn_p_escuelas=chicos_comunas/escuelas_chicos) %>%  
+    select (-geometry) %>% 
+arrange(desc(alumn_p_escuelas))
+
+escuelas_comuna <- escuelas_comuna %>% 
+  mutate(comunas_n=as.factor(comunas_n)) %>% 
+  mutate(comunas=as.numeric(comunas_n)) 
+```
+
+El criterio 1, medido como la relacion número de alumnos por escuela,
+que nos indica la disponibilidad de escuelas.
+
+```{r}
+Fig_1 <- ggplot(escuelas_comuna, aes(x=as.factor(comunas),y=alumn_p_escuelas,fill=comunas_n))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Alumnos por escuela por comuna",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "N° alumnos por escuela") +
+    theme_minimal()
+Fig_1
+
+```
+
+A partir de esta variable alumnos por escuela se procedió a asignarle un
+valor entre 1 y 5 a cada comuna utilizando los cuartiles 0.75, 0.50 y
+0.25. Cuanto menor es la cantidad de estudiantes por unidad educativa,
+más chances tendremos de conseguir vacante entonces se asignó 5 al menor
+valor. En cambio, el máximo valor de estudiantes por unidad educativa se
+le asignó el valor de 1.
+
+```{r}
+# Criterio 1: Disponibilidad de escuelas
+escuelas_comuna <- escuelas_comuna %>% 
+  mutate(alumn_p_escuelas=round(alumn_p_escuelas,1)) %>% 
+  arrange(alumn_p_escuelas)
+
+# definimos los límites para la puntuación
+maxesc=as.numeric(max(escuelas_comuna$alumn_p_escuelas))
+q3esc=as.numeric(quantile(escuelas_comuna$alumn_p_escuelas,0.75))
+q2esc=as.numeric(quantile(escuelas_comuna$alumn_p_escuelas,0.50))
+q1esc=as.numeric(quantile(escuelas_comuna$alumn_p_escuelas,0.25))
+minesc=min(escuelas_comuna$alumn_p_escuelas)
+
+# Ponderamos al criterio escuelas ponderando del 1 al 5. A menor numero de chicos por escuelas más probabilidad de conseguir vacante. POr lo tanto el máximo valor 5 lo tiene la menor cantidad.
+escuelas_comuna <- escuelas_comuna %>% 
+  mutate(alumn_esc_pond=case_when(
+    alumn_p_escuelas == maxesc ~ 1, # muchos alumnos por escuela
+    alumn_p_escuelas < maxesc & alumn_p_escuelas >= q3esc ~ 2,
+    alumn_p_escuelas < q3esc  & alumn_p_escuelas >= q2esc ~ 3,
+    alumn_p_escuelas < q2esc  & alumn_p_escuelas >= q1esc ~ 4,
+    alumn_p_escuelas < q1esc  & alumn_p_escuelas >= minesc ~ 5 # menos alumnos por escuela
+  ))
+escuelas_pond <- escuelas_comuna %>% select(comunas,alumn_p_escuelas,alumn_esc_pond) %>% 
+  arrange(desc(alumn_esc_pond))
+
+# Tabla editada
+Tabla_1 <- escuelas_pond %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_1
+```
+
+Preferimos las comunas 12, 13, 11 y 10 donde tendriamos más
+posibilidades de conseguir vacantes en escuelas porque hay menos alumnos por escuelas. Y en la comuna 8 es donde menos probabilidad tendriamos de tener vacante en una escuela.
+
+# 2. Criterio espacios deportivos
+
+Practicar deportes tanto al aire libre como en espacios cerrados es un
+criterio muy relevante para seleccionar el barrio ideal. Dentro de la
+variedad de opciones encontramos: clubes de barrio, polideportivos y
+espacios verdes públicos. Importamos la base de datos de clubes de
+barrio de CABA.
+
+```{r,results='hide'}
+# Clubes de barrio. Fuente: BA Data 
+clubes_de_barrio_gj <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/vicejefatura-de-gobierno/clubes/clubes.geojson')
+
+clubes_de_barrio_p <- clubes_de_barrio_gj %>% select(-tipo_normalizado,-sede,-telefono,-e_mail,-facebook,-web,-calle,-altura) 
+  
+
+clubes_de_barrio_p_comuna <- clubes_de_barrio_p %>% 
+   tidyr::separate(col = comuna,into=c("comuna_ch", "comuna_n"),sep = " ") %>% 
+   mutate(comuna_n=as.numeric(comuna_n)) %>% 
+  mutate(comuna_ch=NULL) %>% 
+  group_by(comuna_n) %>% 
+  count()
+
+clubes_de_barrio_p_comuna$ geometry=NULL
+
+clubes_de_barrio_p_comuna <- clubes_de_barrio_p_comuna %>% 
+  rename(clubesbarrio_p_comuna= n ) %>% 
+  arrange(desc(clubesbarrio_p_comuna))
+
+clubes_de_barrio_p_comuna
+
+```
+
+Las comunas 9, 11 y 15 tienen alrededor de 30 clubes de barrio, en
+cambio las comunas con menos clubes tienen 6 en la comuna 3 y solo 2 en
+la comuna 2.
+
+```{r,results='hide'}
+# Polideportivos. Fuente: BA Data 
+Polideportivos <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/polideportivos/polideportivos.csv",encoding = "UTF-8")
+
+
+Polideportivos_p_comuna <- Polideportivos %>% 
+  select(-calle,-nro,-telefono,-hor_atenc,-valor_ent,-codigo_postal,-codigo_postal_argentino) %>% group_by(comuna) %>% 
+  count()
+
+Polideportivos_p_comuna$ geometry=NULL
+
+Polideportivos_p_comuna <- Polideportivos_p_comuna %>% 
+  rename(Polidep_comuna=n) %>% 
+  arrange(desc(Polidep_comuna))
+
+Polideportivos_p_comuna
+```
+
+Las comunas 1,2,5,6 y 15 no tienen polideportivos.Las comunas 4 y 9 son
+las que más tienen con 3 polideportivos cada una.
+
+```{r,results='hide'}
+# Espacios verdes públicos donde se pueden practicar distintas actividades deportivas.Fuente: BA Data.
+espacios_verdes_gj <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/secretaria-de-desarrollo-urbano/espacios-verdes/espacio-verde-publico.geojson')
+
+names(espacios_verdes_gj)
+ 
+espacios_verdes_p <- espacios_verdes_gj %>% 
+  select(-nombre,-nombre_ev,-patio_de_j,-apadrinada,-observacio,-fuente_geo,-fuente_ins,-decreto,-fecha_decr,-ordenanza_,-fecha_orde,-boletin_of,-fecha_bole,-Fech_padri,-Vig_padri,-Alc_conven,-DGEV_Padri,-Mant_2017,-TAREAS,-ESTADO,-Canil,-Posta_aero) 
+  
+unique(espacios_verdes_p$clasificac)
+
+# Filtramos los espacios verdes muy pequeños
+verdes_peque <- c("PLAZOLETA","CANTERO CENTRAL", "PATIO RECREATIVO",    "JARDÍN","PASEO","BARRIO/COMPLEJO","PATIO","PATIO DE JUEGOS INCLUSIVO") 
+
+# Me quedo con espacios verdes grandes
+espacios_verdes_p <- espacios_verdes_p %>% 
+   filter(!clasificac %in% verdes_peque) 
+ 
+# Hay un problema con el paseo del bajo que esta con comuna 0 y es comuna 1.
+unique(espacios_verdes_p$COMUNA)
+espacios_verdes_p$COMUNA[espacios_verdes_p$COMUNA==0] <- 1
+
+# La columna geometry es un multipolygon y no me deja agrupar, la saco. 
+str(espacios_verdes_p)
+espacios_verdes_p$ geometry=NULL
+
+espacios_verdes_p_comunas <- espacios_verdes_p %>% 
+  mutate(comuna=as.factor(COMUNA)) %>% 
+  group_by(comuna) %>% 
+  summarise(espacios_verdes=n()) %>% 
+  arrange(desc(espacios_verdes))
+
+espacios_verdes_p_comunas
+```
+
+La comuna 1 tiene 68 espacios verdes, seguida por la comuna 4 con 59
+espacios. En cambio la comuna 3 solo tiene 9 espacios y la comuna 5 solo
+4 espacios.
+
+```{r,results='hide'}
+#Unificamos todos los espacios deportivos por comuna.
+
+espacios_verdes_p_comunas <- espacios_verdes_p_comunas %>% 
+  mutate(comuna=as.numeric(comuna))
+
+  espacios_deportivos <- clubes_de_barrio_p_comuna %>% 
+  left_join(Polideportivos_p_comuna,by=c('comuna_n'='comuna')) %>% 
+ left_join(espacios_verdes_p_comunas,by=c('comuna_n'='comuna')) 
+  
+# Ahora si tenemos que tan deportiva es cada comuna de la ciudad.
+espacios_deportivos <- espacios_deportivos %>%
+   replace(is.na(.), 0) %>%
+  mutate(esp_deport = rowSums(.[2:4])) %>% 
+  mutate(comunas=comuna_n) %>% 
+  mutate(comuna_n=as.factor(comuna_n)) %>% 
+  arrange(desc(esp_deport)) 
+
+espacios_deportivos
+```
+
+```{r}
+
+Fig_2 <- ggplot(espacios_deportivos, aes(x=comuna_n,y=esp_deport,fill=comuna_n))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Espacios deportivos por comuna",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "Espacios deportivos") +
+    theme_minimal()
+Fig_2
+
+```
+
+Las comunas 4 y 1 son las que más espacios deportivos tienen y las
+comunas 6 y 3 las que menos tienen.
+
+Con los datos anteriores definimos la variable espacios deportivos con
+la cual calificamos a las comunas entre 1 y 5 usando los cuartiles
+anteriormente mencionados (punto 1). De tal forma las comuna con más
+espacios deportivos obtendrán los valores más altos (5 y 4).
+
+```{r}
+# Criterio 2: espacios deportivos
+
+# definimos los limites para la puntuación
+maxdep=as.numeric(max(espacios_deportivos$esp_deport))
+q3dep=as.numeric(quantile(espacios_deportivos$esp_deport,0.75))
+q2dep=as.numeric(quantile(espacios_deportivos$esp_deport,0.50))
+q1dep=as.numeric(quantile(espacios_deportivos$esp_deport,0.25))
+mindep=as.numeric(min(espacios_deportivos$esp_deport))
+
+# # Ponderamos al criterio espacios deportivos del 1 al 5. A mayor número de espacios deportivos tiene el máximo valor (5) en la ponderación.
+espacios_deportivos <- espacios_deportivos %>% 
+  mutate(esp_deport_pond=case_when(
+    esp_deport == maxdep ~ 5,
+    esp_deport < maxdep &  esp_deport >= q3dep ~ 4,
+    esp_deport <  q3dep &  esp_deport >= q2dep ~ 3,
+    esp_deport <  q2dep &  esp_deport >= q1dep ~ 2,
+    esp_deport <  q1dep &  esp_deport >= mindep ~ 1
+  ))
+
+espacios_deportivos_pond <- espacios_deportivos %>% 
+  mutate(comunas=as.numeric(comuna_n)) %>% 
+  select(comunas,esp_deport,esp_deport_pond)
+
+
+#library(DT)
+#library(kableExtra)
+Tabla_2 <- espacios_deportivos_pond %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_2
+
+```
+
+Las comunas con más espacios para practicar deportes son la 4 y la 1, y
+las que menos espacios tienen son las comunas 6 y 3.
+
+# 3. Criterio precios de alquileres
+
+El costo de los alquileres es también un dato de suma importancia para
+elegir el barrio ideal. Los datos usados aportan información sobre los
+precios de los alquileres de los distintos barrios de 2013 a 2019. Sin
+embargo, la tendencia de los barrios con el mayor y menor costo de
+alquiler se mantiene. Aunque los datos están desactualizados son
+relevantes como indicadores para establecer un promedio del costo de
+alquiler por comuna.
+
+```{r,results='hide'}
+alquileres <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/acceso-vivienda-y-mercado-inmobiliario/precio-alquiler-deptos.csv",encoding = "UTF-8")
+
+alquileres_p_comuna <- alquileres %>% 
+  group_by(comuna) %>% 
+  summarise(alquiler_prom=mean(precio_prom,na.rm=T)
+ ) %>% arrange(desc(alquiler_prom))
+
+alquileres_p_comuna <- alquileres_p_comuna %>% 
+mutate(comuna_f=as.factor(comuna))
+
+alquileres_p_comuna
+```
+
+```{r}
+
+Fig_3 <- ggplot(alquileres_p_comuna, aes(x=comuna_f,y=alquiler_prom,fill=comuna_f))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Alquileres promedio por comuna entre 2013 a 2019",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "Alquiler promedio ($)") +
+    theme_minimal()
+Fig_3
+
+```
+
+Las comunas con los alquileres más altos son la 14, 1 y 2. Los
+alquileres más accesibles estan en las comunas 8, 4, 9 y 10.
+
+Se calificó este criterio de alquileres del 1 al 5. Se prefirió los
+alquileres de bajo e intermedio costo y se les asignó valores de 5 y 4 ,
+mientras que los de mayor costo tuvieron puntuaciones de 1 y 2 porque
+son menos preferidos.
+
+```{r,results='hide'}
+# Criterio 3: Precio promedio de alquileres 
+round(alquileres_p_comuna$alquiler_prom,1)
+
+# definimos los limites para la puntuación
+maxalq=as.numeric(max(alquileres_p_comuna$alquiler_prom))
+q3alq=as.numeric(quantile(alquileres_p_comuna$alquiler_prom,0.75))
+q2alq=as.numeric(quantile(alquileres_p_comuna$alquiler_prom,0.50))
+q1alq=as.numeric(quantile(alquileres_p_comuna$alquiler_prom,0.25))
+minalq=as.numeric(min(alquileres_p_comuna$alquiler_prom))
+
+# Aca este criterio será ponderado diferente, porque los alquileres bajos e intermedios son preferibles a los alquileres altos.
+alquileres_p_comuna <- alquileres_p_comuna %>% 
+   mutate(alquiler_prom_pond=case_when(
+    alquiler_prom == maxalq ~ 1, # alquiler máximo
+    alquiler_prom < maxalq &   alquiler_prom >= q3alq ~ 2, # alquileres altos
+    alquiler_prom <  q3alq &   alquiler_prom >= q2alq ~ 3, # alquileres intermedios-altos
+    alquiler_prom <  q2alq &   alquiler_prom >= q1alq ~ 5, # alquileres intermedios-bajos
+    alquiler_prom <  q1alq &   alquiler_prom >= minalq ~ 4))# Alquileres bajos
+
+alquileres_p_comuna <- alquileres_p_comuna %>% 
+  mutate(comunas=as.numeric(comuna))
+alquileres_p_comuna 
+
+
+```
+
+La comuna con los alquileres más caros es la 14, seguida por las comunas
+1, 2 y 13. En cambio, las comunas con alquileres accesibles son las
+comunas 15, 7, 10, 9, 4 y 8.
+
+# 4. Criterio familiar
+
+Se añadió el criterio familiar que considera en cada comuna la población
+dentro del rango de edad de 5 y 19 años, lo cual seria un indicador de
+presencia de familias con niños y adolecesntes. En este caso, se
+prefirió las comunas en donde viven familias con hijos.
+
+```{r}
+# Criterio 4: familiar (presencia de niños y adolescentes)
+
+# Estos datos los usamos en el criterio Escuelas
+# chicos_edad_escolar
+
+# definimos los límites para la puntuación
+maxfam=as.numeric(max(chicos_edad_escolar$chicos_comunas))
+q3fam=as.numeric(quantile(chicos_edad_escolar$chicos_comunas,0.75))
+q2fam=as.numeric(quantile(chicos_edad_escolar$chicos_comunas,0.50))
+q1fam=as.numeric(quantile(chicos_edad_escolar$chicos_comunas,0.25))
+minfam=as.numeric(min(chicos_edad_escolar$chicos_comunas))
+
+# Ponderamos al criterio 4
+familiar <- chicos_edad_escolar %>% 
+  mutate(familiar_pond=case_when(
+    chicos_comunas == maxfam ~ 5, 
+    chicos_comunas < maxfam &  chicos_comunas >= q3fam ~ 4, 
+    chicos_comunas <  q3fam &  chicos_comunas >= q2fam ~ 3, 
+    chicos_comunas <  q2fam &  chicos_comunas >= q1fam ~ 2, 
+    chicos_comunas <  q1fam &  chicos_comunas >= minfam ~ 1 
+  ))
+
+familiar_pond <- familiar %>% 
+  mutate(comunas=as.numeric(comunas_n)) %>% 
+  mutate(comunas_n=as.factor(comunas_n)) 
+
+
+Tabla_3 <- familiar_pond %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_3
+```
+
+```{r}
+
+Fig_4 <- ggplot(familiar, aes(x=as.factor(comunas_n),y=chicos_comunas,fill=as.factor(comunas_n)))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Niños-adolecentes (5-19 años) por comuna",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "N° de niños/adolecentes") +
+    theme_minimal()
+Fig_4
+
+```
+
+Las comunas en donde viven más familias con hijos son las comunas 8, 4,
+7 y 1, en cambio las comunas con menor poblacion de niños o adolescentes
+son las comunas 2, 6, 5 y 10.
+
+# 5. Criterio Centros de salud
+
+Para seleccionar el barrio ideal consideramos necesario contar con
+cercanía a centros de salud para acudir en caso de prevenir o atender
+enfermedades, tales como hospitales, centros de salud (CESAC),
+estaciones saludables, centros de salud privados. La cantidad de estos
+espacios se agruparon y se sumaron por comuna, posteriormente se ponderó
+con base en los cuartiles y se les asignó una calificación entre 1 y 5,
+en donde 1 significa poca disponibilidad y 5 mayor disponibilidad de
+centros de salud.
+
+```{r,results='hide'}
+# Hospitales. Fuente: BA Data.
+a_hosp <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/salud/hospitales/hospitales.csv")
+
+# Columnas de interés
+a_hosp <- a_hosp %>% 
+  select(ID,COD_POSTAL)
+
+# Se inserta Comuna por código postal 
+# (fuente: https://www.barriorecoleta.com.ar/blog/codigos-postales/)
+unique(a_hosp$COD_POSTAL) # se revisan los COD únicos
+
+a_hosp <- a_hosp %>% 
+  mutate(comuna = case_when(
+    COD_POSTAL == "C1270AAN" ~ "4",
+    COD_POSTAL == "C1425EFD" ~ "2",
+    COD_POSTAL == "C1425DUY" ~ "2",
+    COD_POSTAL == "C1287ABJ" ~ "4",
+    COD_POSTAL == "C1264AAA" ~ "4",
+    COD_POSTAL == "C1405DCD" ~ "6",
+    COD_POSTAL == "C1272AAA" ~ "4",
+    COD_POSTAL == "C1275AHG" ~ "4",
+    COD_POSTAL == "C1169AAB" ~ "4",
+    COD_POSTAL == "C1428DQG" ~ "13",
+    COD_POSTAL == "C1246ABQ" ~ "4",
+    COD_POSTAL == "C1416DJI" ~ "11",
+    COD_POSTAL == "C1212AAA" ~ "5",
+    COD_POSTAL == "C1405BWU" ~ "6",
+    COD_POSTAL == "C1424BSD" ~ "6",
+    COD_POSTAL == "C1232AAC" ~ "3",
+    COD_POSTAL == "C1407AOM" ~ "10",
+    COD_POSTAL == "C1282AEN" ~ "4",
+    COD_POSTAL == "C1427DPS" ~ "15",
+    COD_POSTAL == "C1425ASQ" ~ "2",
+    COD_POSTAL == "C1155AHD" ~ "4",
+    COD_POSTAL == "C1425AGP" ~ "14",
+    COD_POSTAL == "C1405DCS" ~ "6",
+    COD_POSTAL == "C1406FWY" ~ "7",
+    COD_POSTAL == "C1430BKC" ~ "12",
+    COD_POSTAL == "C1419HDN" ~ "11",
+    COD_POSTAL == "C1407KQF" ~ "10",
+    COD_POSTAL == "C1408INH" ~ "9",
+    COD_POSTAL == "C1437JLR" ~ "4",
+    COD_POSTAL == "C1427ARN" ~ "15",
+    COD_POSTAL == "C1406ELA" ~ "7",
+    COD_POSTAL == "C1439CNU" ~ "8",
+    COD_POSTAL == "C1245AAM" ~ "4",
+    COD_POSTAL == "C1284AGA" ~ "4",
+    COD_POSTAL == "C1221ADC" ~ "3"))
+
+# Se agrupa por comuna y se cuantifica
+comu_hosp <- a_hosp %>% 
+  group_by(comuna) %>% 
+  summarise(total = n()) %>% 
+  rename(hosp_comuna = total)
+comu_hosp
+
+```
+
+```{r, results='hide'}
+# Centros de Salud (CESAC). Fuente: BA Data.
+a_centsal <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/salud/centros-salud-accion-comunitaria-cesac/centros_de_salud_nivel_1_BADATA_WGS84.csv")
+
+# Columnas de interés
+colnames(a_centsal)
+a_centsal <- a_centsal %>% 
+  select(id,comuna)
+
+# Se agrupa por comuna y se cuantifica
+comu_cesac <- a_centsal %>% 
+  group_by(comuna) %>% 
+  summarise(total = n()) %>% 
+  rename(cesac_comuna = total)
+comu_cesac
+```
+
+```{r, results='hide'}
+# Estaciones saludables. Fuente: BA Data.
+a_salu <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/vicejefatura-de-gobierno/estaciones-saludables/estaciones-saludables.csv")
+
+# Columnas de interés
+colnames(a_salu)
+a_salu <- a_salu %>% 
+  select(id,comuna)
+
+# Se agrupa por comuna y se cuantifica
+comu_salu <- a_salu %>% 
+  group_by(comuna) %>% 
+  summarise(total = n()) %>% 
+  rename(saludable_comuna = total)
+comu_salu
+```
+
+```{r, results='hide'}
+# Centros de Salud Privados. Fuente: BA Data.
+a_salpri <- read.csv("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/centros-de-salud-privados/centros-de-salud-privados.csv")
+
+# Columnas de interés
+colnames(a_salpri)
+a_salpri <- a_salpri %>% 
+  select(nombre,comuna)
+
+# Se agrupa por comuna y se cuantifica
+comu_salpri <- a_salpri %>% 
+  group_by(comuna) %>% 
+  summarise(total = n()) %>% 
+  rename(salprivados_comuna = total)
+comu_salpri
+
+# Se borran los datas que no se usaran
+rm(a_salpri)
+rm(a_centsal)
+rm(a_hosp)
+rm(a_salu)
+```
+
+```{r,results='hide'}
+# Comuna vs Salud. Fuente: BA Data.
+
+# En los datas "Comu_salpri" y "Comu_salu" la columna de "Comuna"
+# el número viene acompañado de "Comuna", se elimina para poderlos pegar
+comu_salpri$comuna <- gsub("Comuna", "", as.character(comu_salpri$comuna))
+comu_salu$comuna <- gsub("Comuna", "", as.character(comu_salu$comuna))
+
+# Se revisa que la clase de los datas y obj
+class(comu_cesac)
+class(comu_hosp)
+class(comu_salpri)
+class(comu_salu)
+
+class(comu_cesac$comuna)
+class(comu_hosp$comuna)
+class(comu_salpri$comuna)
+class(comu_salu$comuna)
+
+# Se transforma a enteros
+comu_hosp$comuna <- as.integer(comu_hosp$comuna)
+comu_salpri$comuna <- as.integer(comu_salpri$comuna)
+comu_salu$comuna <- as.integer(comu_salu$comuna)
+
+# Se agrupan los datas por comuna 
+espacios_salud <- comu_cesac %>% 
+  full_join(comu_hosp) %>% 
+  full_join(comu_salpri) %>% 
+  full_join(comu_salu) 
+
+# Comuna y Centros de Salud ----
+centros_salud_comuna <- espacios_salud %>%
+  replace(is.na(.), 0) %>%
+  mutate(centros_salud = rowSums(.[2:5])) %>% 
+  arrange(desc(centros_salud)) %>% 
+  mutate(comuna = as.numeric(comuna))
+
+centros_salud_comuna
+
+```
+
+Encontramos que las comunas con mayor número de centros de salud son la
+4 con 27 y la comuna 2 con 20 centros. En cambio las comunas con menos
+centros de salud son la comuna 11 con 4 y la comuna 10 con 3 centros de
+salud.
+
+```{r}
+# Gráfica de salud por comuna. 
+Fig_5 <- ggplot(centros_salud_comuna, aes(x=as.factor(comuna),y=centros_salud,fill=as.factor(comuna)))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Centros de salud por comuna",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "Centros de salud", 
+       caption = "Fuente: elaboración propia con base en BA Data")+
+  theme_minimal()
+
+Fig_5
+
+```
+
+```{r, results='hide'}
+# Datos geo por comuna. Fuente: BA Data.
+geo_comuna <- st_read("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/comunas/CABA_comunas.geojson")
+geo_comuna <- clean_names(geo_comuna) # nombre de columna en minúscula
+
+# Columas de interés
+colnames(geo_comuna)
+geo_comuna <- geo_comuna %>% 
+  select(comunas,geometry, barrios) %>% 
+  mutate(comuna = as.numeric(comunas))
+  ############rename(comuna = comunas)
+
+# Se unen la base con datos geo
+geo_cent_salud <- geo_comuna %>% left_join(centros_salud_comuna)
+```
+
+```{r}
+# Mapa delos centros de salud por comuna----
+ggplot()+
+  geom_sf(data = geo_cent_salud, aes(fill = centros_salud), color = NA)+
+  scale_fill_viridis_c(option = "plasma", trans = "sqrt")+
+  labs(title = "Comunas",
+       subtitle = "Ciudad Autónoma de Buenos Aires",
+       fill = "Centros de salud")+
+  geom_sf_label(data = geo_cent_salud, aes(label = comuna), size = 3, alpha = 0.5)
+
+```
+
+```{r}
+
+# Criterio 5: centros de salud
+# Ponderación----
+
+# Límites para la puntuación
+ max_hosp <- as.numeric(max(centros_salud_comuna$centros_salud))
+ q3_hosp  <- as.numeric(quantile(centros_salud_comuna$centros_salud,0.75))
+ q2_hosp  <- as.numeric(quantile(centros_salud_comuna$centros_salud,0.50))
+ q1_hosp  <- as.numeric(quantile(centros_salud_comuna$centros_salud,0.25))
+ min_hosp <- as.numeric(min(centros_salud_comuna$centros_salud))
+
+
+# Ponderamos del criterio 
+salud_pond <- centros_salud_comuna %>% 
+  mutate(salud_pond = case_when(
+    centros_salud == max_hosp ~ 5, 
+    centros_salud <  max_hosp &  centros_salud >= q3_hosp ~ 4, 
+    centros_salud <  q3_hosp  &  centros_salud >= q2_hosp ~ 3, 
+    centros_salud <  q2_hosp  &  centros_salud >= q1_hosp ~ 2, 
+    centros_salud <  q1_hosp  &  centros_salud >= min_hosp ~ 1)) 
+
+Tabla_4 <- salud_pond %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_4
+
+```
+
+# 6. Criterio Transporte
+
+Mediante los datos espaciales de comunas y estaciones de subtes se
+realizaron intersecciones entre ambas bases de datos para obtener
+cuantas estaciones de subte pertenecen a cada comuna de CABA.
+
+```{r,results='hide'}
+# Estaciones de subtes. Fuente BA.
+subtes <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/subte-estaciones/subte_estaciones.geojson')
+
+# Datos espaciales de las comunas
+comunas <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/comunas/CABA_comunas.geojson')
+
+# chequeo crs para poder intersectar:
+st_crs(comunas)
+st_crs(subtes)
+
+# Unimos cada estacion de subte con su respctiva comuna mediante una intersección. Obteniendo así a que comuna pertenece cada estacion.
+sf::sf_use_s2(FALSE)
+subtes_com = st_intersection(subtes, comunas) 
+
+subtes_cuenta = st_set_geometry(subtes_com,NULL) %>% 
+  select(COMUNAS) %>% 
+  group_by(COMUNAS) %>% 
+  summarise(n_estaciones_subtes = n())
+
+names(subtes_cuenta)[1] = 'comuna_n'
+
+rm(subtes)
+
+subtes_cuenta
+
+```
+
+Hicimos lo mismo con las estaciones de bicicleta, realizamos la
+intersección con las comunas y calculamos cuantas estaciones de
+bicicleta hay en cada comuna.
+
+```{r,results='hide'}
+# Estaciones de Bicicletas. Fuente BA.
+estaciones_bicicletas <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/transporte/estaciones-bicicletas-publicas/nuevas-estaciones-bicicletas-publicas.geojson')
+
+st_crs(estaciones_bicicletas) #ok
+
+estaciones_bicicletas = st_intersection(estaciones_bicicletas, comunas) 
+
+estaciones_bicicletas_cuenta = st_set_geometry(estaciones_bicicletas,NULL) %>% 
+  select(COMUNAS) %>% 
+  group_by(COMUNAS) %>% 
+  summarise(n_estaciones_bicicletas = n())
+
+names(estaciones_bicicletas_cuenta)[1] = 'comuna_n'
+
+rm(estaciones_bicicletas)
+
+estaciones_bicicletas_cuenta
+```
+
+También cuantificamos el número de estaciones de ferrocarril por comuna.
+
+```{r,results='hide'}
+# Estaciones de Ferrocarril. Funete BA.
+
+estaciones_ferrocarril <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/estaciones-de-ferrocarril/estaciones-de-ferrocarril.geojson')
+st_crs(estaciones_ferrocarril) #ok
+
+estaciones_ferrocarril = st_intersection(estaciones_ferrocarril, comunas) 
+
+estaciones_ferrocarril_cuenta = st_set_geometry(estaciones_ferrocarril,NULL) %>% 
+  select(COMUNAS) %>% 
+  group_by(COMUNAS) %>% 
+  summarise(n_estaciones_ferrocarril = n())
+
+
+names(estaciones_ferrocarril_cuenta)[1] = 'comuna_n'
+
+rm(estaciones_ferrocarril)
+
+estaciones_ferrocarril_cuenta
+```
+
+Y por último, cuantificamos las estaciones de metrobus.
+
+```{r,results='hide'}
+# Estaciones de metrobus. Fuente BA.
+estaciones_metrobus <- st_read('https://cdn.buenosaires.gob.ar/datosabiertos/datasets/transporte/metrobus/estaciones-de-metrobus.geojson')
+st_crs(estaciones_metrobus) #ok
+
+estaciones_metrobus = st_intersection(estaciones_metrobus, comunas) 
+
+estaciones_metrobus_cuenta = st_set_geometry(estaciones_metrobus,NULL) %>% 
+  select(COMUNAS) %>% 
+  group_by(COMUNAS) %>% 
+  summarise(n_estaciones_metrobus = n())
+
+
+names(estaciones_metrobus_cuenta)[1] = 'comuna_n'
+
+rm(estaciones_metrobus)
+
+estaciones_metrobus_cuenta
+
+```
+
+Luego unimos todos estos datos de transporte en una variable llamada
+movilidad por comuna, y la ponderamos de 1 a 5. Como preferimos que haya
+más movilidad, tienen 5 y 4 las comunas con más movilidad.
+
+```{r,results='hide'}
+# armamos un df con todos los datos de transporte
+transporte <- subtes_cuenta %>% 
+  full_join(estaciones_metrobus_cuenta) %>%
+  full_join(estaciones_ferrocarril_cuenta) %>% 
+  full_join(estaciones_bicicletas_cuenta)
+
+# Acomodamos un poquito
+transporte <- transporte %>% 
+  mutate_all(~replace(., is.na(.), 0)) %>% # reemplazo los na con ceros
+  mutate(movilidad=n_estaciones_subtes+n_estaciones_metrobus+n_estaciones_ferrocarril
+         +n_estaciones_bicicletas) %>% 
+  arrange(desc(movilidad))
+ 
+transporte 
+
+```
+
+```{r}
+# Criterio 6: Transporte
+# definimos los limites para la puntuación
+maxmov=as.numeric(max(transporte$movilidad))
+q3mov=as.numeric(quantile(transporte$movilidad,0.75))
+q2mov=as.numeric(quantile(transporte$movilidad,0.50))
+q1mov=as.numeric(quantile(transporte$movilidad,0.25))
+minmov=as.numeric(min(transporte$movilidad))
+
+# 
+transporte_p_comuna <- transporte %>% 
+  mutate(movilidad_pond=case_when(
+    movilidad == maxmov ~ 5, # transporte y bicis
+    movilidad < maxmov &   movilidad >= q3mov ~ 4, 
+    movilidad <  q3mov &   movilidad >= q2mov ~ 3, 
+    movilidad <  q2mov &   movilidad >= q1mov ~ 2, 
+    movilidad <  q1mov &   movilidad >= minmov ~ 1))
+
+transporte_pond <- transporte_p_comuna %>% 
+  mutate(comunas=as.numeric(comuna_n)) %>% 
+  select(-1)
+  
+Tabla_5 <- transporte_pond %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_5
+```
+
+```{r}
+# Gráfica de transporte por comuna----
+
+Fig_6 <- ggplot(transporte_pond, aes(x=as.factor(comunas),y=movilidad,fill=as.factor(comunas)))+
+  geom_col(show.legend = F,color='black')+
+  labs(title = "Transporte en la comuna",
+       subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+       x = "Comunas",
+       y = "Transporte") +
+    theme_minimal()
+Fig_6
+
+```
+Encontramos que la comuna 1 es la más conectada con distintos medios de transporte, seguida por la comuna 13 con un 50 %. En cambio, las comunas 6 y 10 son las menos conectadas.  
+
+# Matriz priorización
+
+Para elegir la comuna y luego el barrio ideal seleccionaremos 4 criterios. Cada criterio tendrá un peso ponderado, el más importante es el criterio 1 con 55% de la puntuación. Luego le sigue el criterio 2 con el 30%, y luego el criterio 3 con el 15 % y criterio 4 con el 5%.
+
+    Criterio 1: 55%
+    Criterio 2: 30%
+    Criterio 3: 15%
+    Criterio 4: 5%
+
+Con todos los criterios categorizados, armamos la matriz de
+priorización.
+
+```{r, results='hide'}
+# Agregamos todos los criterios
+
+matriz_priorizacion <- escuelas_pond %>% 
+   left_join(espacios_deportivos_pond, by="comunas") %>% 
+   left_join(alquileres_p_comuna, by="comunas") %>% 
+   left_join(familiar_pond, by="comunas") %>% 
+   left_join(salud_pond, by = "comuna") %>%
+   left_join(transporte_pond, by="comunas")
+
+matriz_priorizacion
+
+```
+```{r}
+# Ordenamos y limpiamos
+matriz_priorizacion_prolija <- matriz_priorizacion %>% 
+  select(-6,-8,-10,-13,-14,-15,-16,-19,-20,-21,-22)
+
+Tabla_6 <-  matriz_priorizacion_prolija %>%
+  kbl() %>%
+  kable_classic()
+
+Tabla_6
+```
+
+# EJEMPLO 1
+Lo más importante es que la comuna sea familiar. Luego le sigue el precio de los alquileres, seguido por la probabilidad de conseguir vacante en escuelas y por ultimo que haya espacios para practicar deportes.
+
+```{r, results='hide'}
+
+#con la columna del criterio ponderado. Asigno un orden a cada criterio seleccionado. 
+matriz_priorizacion_cr1 <- matriz_priorizacion_prolija %>% 
+  rename(criterio_1=familiar_pond) %>% 
+  rename(criterio_2=alquiler_prom_pond) %>% 
+  rename(criterio_3=alumn_esc_pond) %>%
+  rename(criterio_4=salud_pond) 
+     
+matriz_priorizacion_pesada1 <- matriz_priorizacion_cr1 %>% 
+      mutate(total_crit1=criterio_1*0.55) %>% 
+       mutate(total_crit2=criterio_2*0.30) %>% 
+       mutate(total_crit3=criterio_3*0.15) %>% 
+       mutate(total_crit4=criterio_4*0.5) %>% 
+       mutate(total_comuna=total_crit1+total_crit2+total_crit3+total_crit4) %>% 
+       mutate(COMUNAS=as.factor(comunas)) %>% 
+      arrange(desc(total_comuna))
+  
+matriz_priorizacion_pesada1
+
+
+```
+
+Con estas prioridades la comuna 4 sería la ideal que comprende los barrios: BARRACAS - BOCA - NUEVA POMPEYA - PARQUE PATRICIOS"
+
+```{r, results='hide'}
+
+# comunas
+shape_comunas <- st_read("http://cdn.buenosaires.gob.ar/datosabiertos/datasets/comunas/CABA_comunas.geojson")
+
+shape_comunas <- shape_comunas %>% 
+  select(COMUNAS,
+          BARRIOS,
+          AREA, 
+          geometry) %>% 
+   mutate(COMUNA=str_sub(COMUNAS,1,2)) %>% 
+  mutate(COMUNA=as.numeric(COMUNA))
+  
+shape_comunas_pesada1 <-  shape_comunas %>% 
+   left_join(matriz_priorizacion_pesada1, by=c('COMUNA'='comunas')) 
+
+```
+
+```{r}
+
+# Figura/mapa
+grafico_ejemplo1 <- ggplot() + 
+     geom_sf(data = shape_comunas_pesada1, aes(fill = total_comuna >6.15), colour = 'beige') +
+     theme_minimal()+
+     theme(legend.position = "none") +
+     labs(title = "La comuna ideal: Ejemplo 1") +
+     geom_sf_label(data = shape_comunas_pesada1, aes(label = COMUNA), size = 3, alpha = 0.5) 
+
+grafico_ejemplo1
+
+```
+
+# EJEMPLO 2
+
+Lo más importante para este caso es que el barrio tenga transportes y esté bien conectado, seguido de la presencia de espacios deportivos y centros de salud cercanos, por último que el barrio sea familiar y haya chicos y adolecsentes.
+
+```{r, results='hide'}
+
+matriz_priorizacion_cr2 <- matriz_priorizacion_prolija %>% 
+  rename(criterio_1=movilidad_pond) %>% 
+  rename(criterio_2=esp_deport_pond) %>% 
+  rename(criterio_3=salud_pond) %>%
+  rename(criterio_4=familiar_pond) 
+  
+matriz_priorizacion_pesada2 <- matriz_priorizacion_cr2 %>% 
+      mutate(total_crit1=criterio_1*0.55) %>% 
+      mutate(total_crit2=criterio_2*0.30) %>% 
+      mutate(total_crit3=criterio_3*0.15) %>% 
+      mutate(total_crit4=criterio_4*0.5) %>% 
+      mutate(total_comuna=total_crit1+total_crit2+total_crit3+total_crit4) %>%
+      mutate(COMUNAS=as.factor(comunas)) %>% 
+      arrange(desc(total_comuna))
+     
+matriz_priorizacion_pesada2
+
+```
+
+Segun los criterios mencionados, la comuna ideal sería la número 1 que
+incluye los barrios: Constitución, Montserrat, Puerto Madero, Retiro, San Nicolás y San Telmo.
+
+
+```{r, results='hide'}
+# comunas
+shape_comunas <- st_read("http://cdn.buenosaires.gob.ar/datosabiertos/datasets/comunas/CABA_comunas.geojson")
+
+shape_comunas <- shape_comunas %>% 
+  select(COMUNAS,
+          BARRIOS,
+          AREA, 
+          geometry) %>% 
+   mutate(COMUNA=str_sub(COMUNAS,1,2)) %>% 
+  mutate(COMUNA=as.numeric(COMUNA))
+  
+shape_comunas_pesada2 <-  shape_comunas %>% 
+   left_join(matriz_priorizacion_pesada2, by=c('COMUNA'='comunas')) 
+```
+
+```{r}
+# Figura/mapa
+grafico_ejemplo2 <- ggplot() + 
+     geom_sf(data = shape_comunas_pesada2, aes(fill = total_comuna >6), colour = 'beige') +
+     theme_minimal()+
+     theme(legend.position = "none") +
+     labs(title = "La comuna ideal: Ejemplo 2") +
+     geom_sf_label(data = shape_comunas_pesada2, aes(label = COMUNA), size = 3, alpha = 0.5) 
+
+grafico_ejemplo2
+
+```
